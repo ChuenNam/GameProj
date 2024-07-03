@@ -1,7 +1,8 @@
-﻿#include <windows.h>
-#include <stdio.h>
+﻿#include "framework.h"
+#include "GameProj.h"
 #include <time.h>
 
+#define MAX_LOADSTRING 100
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
 #define TIMER_ID 1
@@ -12,19 +13,31 @@
 #define PLAYER_JUMP_HEIGHT 100
 #define PLAYER_SPEED 5
 #define OBSTACLE_SPEED 5
+#define GROUND_HEIGHT 50
 
-// Global variables
+
+// 全局变量:
+HINSTANCE hInst;                                // 当前实例
+WCHAR szTitle[MAX_LOADSTRING];                  // 标题栏文本
+WCHAR szWindowClass[MAX_LOADSTRING];            // 主窗口类名
+
+// 全局游戏变量
 HWND hwnd;
-HINSTANCE hInstance;
 HBRUSH playerBrush, obstacleBrush, backgroundBrush;
 int playerX, playerY;
 int obstacles[MAX_OBSTACLES];
-int obstacleSpeed = OBSTACLE_SPEED;
 int score = 0;
 BOOL gameRunning = FALSE;
+BOOL playerJumping = FALSE;
+int jumpCounter = 0;
 
-// Function prototypes
-LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+// 此代码模块中包含的函数的前向声明:
+ATOM                MyRegisterClass(HINSTANCE hInstance);
+BOOL                InitInstance(HINSTANCE, int);
+LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
+
+// 游戏函数声明
 void InitializeGame();
 void UpdateGame();
 void DrawGame(HDC hdc);
@@ -32,208 +45,294 @@ void EndGame();
 void ResetGame();
 void GenerateObstacle();
 
-// Entry point of the Windows application
-int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR lpCmdLine, int nCmdShow) {
-    hInstance = hInst;
+int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
+    _In_opt_ HINSTANCE hPrevInstance,
+    _In_ LPWSTR    lpCmdLine,
+    _In_ int       nCmdShow)
+{
+    UNREFERENCED_PARAMETER(hPrevInstance);
+    UNREFERENCED_PARAMETER(lpCmdLine);
 
-    // Register window class
-    WNDCLASS wc = { 0 };
-    wc.lpfnWndProc = WndProc;
-    wc.hInstance = hInst;
-    wc.lpszClassName = L"JumpGame";
-    wc.hbrBackground = (HBRUSH)COLOR_WINDOW;
+    // 初始化全局字符串
+    LoadStringW(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
+    LoadStringW(hInstance, IDC_GAMEPROJ, szWindowClass, MAX_LOADSTRING);
+    MyRegisterClass(hInstance);
 
-    RegisterClass(&wc);
-
-    // Create the window
-    hwnd = CreateWindowW(L"JumpGame", L"Jump and Dodge Game",
-        WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
-        WINDOW_WIDTH, WINDOW_HEIGHT, NULL, NULL, hInst, NULL);
-
-    if (hwnd == NULL) {
-        MessageBoxW(NULL, L"Window Creation Failed!", L"Error", MB_ICONERROR);
-        return 0;
+    // 执行应用程序初始化:
+    if (!InitInstance(hInstance, nCmdShow))
+    {
+        return FALSE;
     }
 
-    // Show the window
+    HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_GAMEPROJ));
+
+    MSG msg;
+
+    // 主消息循环:
+    while (GetMessage(&msg, nullptr, 0, 0))
+    {
+        if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
+        {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
+    }
+
+    return (int)msg.wParam;
+}
+
+//
+//  函数: MyRegisterClass()
+//
+//  目标: 注册窗口类。
+//
+ATOM MyRegisterClass(HINSTANCE hInstance)
+{
+    WNDCLASSEXW wcex;
+
+    wcex.cbSize = sizeof(WNDCLASSEX);
+
+    wcex.style = CS_HREDRAW | CS_VREDRAW;
+    wcex.lpfnWndProc = WndProc;
+    wcex.cbClsExtra = 0;
+    wcex.cbWndExtra = 0;
+    wcex.hInstance = hInstance;
+    wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_GAMEPROJ));
+    wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wcex.lpszMenuName = MAKEINTRESOURCEW(IDC_GAMEPROJ);
+    wcex.lpszClassName = szWindowClass;
+    wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+
+    return RegisterClassExW(&wcex);
+}
+
+//
+//   函数: InitInstance(HINSTANCE, int)
+//
+//   目标: 保存实例句柄并创建主窗口
+//
+//   注释:
+//
+//        在此函数中，我们在全局变量中保存实例句柄并
+//        创建和显示主程序窗口。
+//
+BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
+{
+    hInst = hInstance; // 将实例句柄存储在全局变量中
+
+    hwnd = CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
+        CW_USEDEFAULT, 0, WINDOW_WIDTH, WINDOW_HEIGHT, nullptr, nullptr, hInstance, nullptr);
+
+    if (!hwnd)
+    {
+        return FALSE;
+    }
+
     ShowWindow(hwnd, nCmdShow);
     UpdateWindow(hwnd);
 
-    // Message loop
-    MSG msg;
-    while (GetMessage(&msg, NULL, 0, 0)) {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
-    }
+    // 初始化游戏
+    InitializeGame();
 
-    return msg.wParam;
+    return TRUE;
 }
 
-// Window Procedure function
-LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    switch (msg) {
-    case WM_CREATE:
-        // Initialize resources and start the game
-        InitializeGame();
-        break;
-
+//
+//  函数: WndProc(HWND, UINT, WPARAM, LPARAM)
+//
+//  目标: 处理主窗口的消息。
+//
+//  WM_COMMAND  - 处理应用程序菜单
+//  WM_PAINT    - 绘制主窗口
+//  WM_DESTROY  - 发送退出消息并返回
+//
+//
+LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    switch (message)
+    {
+    case WM_COMMAND:
+    {
+        int wmId = LOWORD(wParam);
+        // 分析菜单选择:
+        switch (wmId)
+        {
+        case IDM_ABOUT:
+            DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
+            break;
+        case IDM_EXIT:
+            DestroyWindow(hWnd);
+            break;
+        default:
+            return DefWindowProc(hWnd, message, wParam, lParam);
+        }
+    }
+    break;
     case WM_KEYDOWN:
-        // Handle player controls (space bar to jump)
-        if (wParam == VK_SPACE && gameRunning) {
-            // Simulate a jump by moving player up
-            playerY -= PLAYER_JUMP_HEIGHT;
+        if (wParam == VK_SPACE && gameRunning && !playerJumping) {
+            playerJumping = TRUE;
+            jumpCounter = PLAYER_JUMP_HEIGHT / PLAYER_SPEED;
         }
         break;
-
     case WM_PAINT:
     {
         PAINTSTRUCT ps;
-        HDC hdc = BeginPaint(hwnd, &ps);
-
-        // Draw the game
+        HDC hdc = BeginPaint(hWnd, &ps);
         DrawGame(hdc);
-
-        EndPaint(hwnd, &ps);
+        EndPaint(hWnd, &ps);
     }
     break;
-
     case WM_TIMER:
-        // Update game logic on timer event
-        UpdateGame();
+        if (wParam == TIMER_ID) {
+            UpdateGame();
+        }
         break;
-
     case WM_DESTROY:
         PostQuitMessage(0);
         break;
-
     default:
-        return DefWindowProc(hwnd, msg, wParam, lParam);
+        return DefWindowProc(hWnd, message, wParam, lParam);
     }
     return 0;
 }
 
-// Initialize game variables and resources
+// “关于”框的消息处理程序。
+INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    UNREFERENCED_PARAMETER(lParam);
+    switch (message)
+    {
+    case WM_INITDIALOG:
+        return (INT_PTR)TRUE;
+
+    case WM_COMMAND:
+        if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
+        {
+            EndDialog(hDlg, LOWORD(wParam));
+            return (INT_PTR)TRUE;
+        }
+        break;
+    }
+    return (INT_PTR)FALSE;
+}
+
+// 初始化游戏变量和资源
 void InitializeGame() {
-    srand(time(NULL)); // Initialize random seed
+    srand((unsigned int)time(NULL));
     playerX = WINDOW_WIDTH / 4;
-    playerY = WINDOW_HEIGHT - PLAYER_SIZE - 50;
+    playerY = WINDOW_HEIGHT - PLAYER_SIZE - GROUND_HEIGHT;
 
-    // Create brushes for drawing
-    playerBrush = CreateSolidBrush(RGB(255, 0, 0)); // Red color for player
-    obstacleBrush = CreateSolidBrush(RGB(0, 0, 255)); // Blue color for obstacles
-    backgroundBrush = CreateSolidBrush(RGB(255, 255, 255)); // White background
+    playerBrush = CreateSolidBrush(RGB(255, 0, 0));
+    obstacleBrush = CreateSolidBrush(RGB(0, 0, 255));
+    backgroundBrush = CreateSolidBrush(RGB(255, 255, 255));
 
-    // Initialize obstacles
     for (int i = 0; i < MAX_OBSTACLES; i++) {
-        obstacles[i] = -1; // -1 indicates no obstacle
+        obstacles[i] = -1;
     }
 
-    // Start game timer
-    SetTimer(hwnd, TIMER_ID, 30, NULL); // 30 milliseconds timer interval
+    for (int i = 0; i < MAX_OBSTACLES; i++) {
+        GenerateObstacle();
+    }
+
+    if (!SetTimer(hwnd, TIMER_ID, 30, NULL)) {
+        MessageBox(hwnd, L"Failed to create timer", L"Error", MB_OK | MB_ICONERROR);
+    }
 
     gameRunning = TRUE;
 }
 
-// Update game state
+// 更新游戏状态
 void UpdateGame() {
-    // Move obstacles
     for (int i = 0; i < MAX_OBSTACLES; i++) {
         if (obstacles[i] != -1) {
-            obstacles[i] -= obstacleSpeed;
+            obstacles[i] -= OBSTACLE_SPEED;
             if (obstacles[i] < -OBSTACLE_WIDTH) {
-                // If obstacle is off screen, generate a new one
                 obstacles[i] = WINDOW_WIDTH;
             }
 
-            // Collision detection
             if (playerX < obstacles[i] + OBSTACLE_WIDTH &&
                 playerX + PLAYER_SIZE > obstacles[i] &&
-                playerY < WINDOW_HEIGHT - OBSTACLE_HEIGHT) {
-                // Collision detected
+                playerY + PLAYER_SIZE > WINDOW_HEIGHT - OBSTACLE_HEIGHT - GROUND_HEIGHT &&
+                playerY < WINDOW_HEIGHT - GROUND_HEIGHT) {
                 EndGame();
                 return;
             }
+
         }
     }
 
-    // Update player position (simulate gravity)
-    if (playerY < WINDOW_HEIGHT - PLAYER_SIZE) {
+    if (playerJumping) {
+        playerY -= PLAYER_SPEED;
+        jumpCounter--;
+        if (jumpCounter <= 0) {
+            playerJumping = FALSE;
+        }
+    }
+    else if (playerY < WINDOW_HEIGHT - PLAYER_SIZE - GROUND_HEIGHT) {
         playerY += PLAYER_SPEED;
     }
 
-    // Increase score
     score++;
 
-    // Generate new obstacles randomly
     if (rand() % 100 < 5) {
         GenerateObstacle();
     }
 
-    // Redraw the window
     InvalidateRect(hwnd, NULL, TRUE);
 }
 
-// Draw the game
+// 绘制游戏
 void DrawGame(HDC hdc) {
-    // Draw background
     RECT clientRect;
     GetClientRect(hwnd, &clientRect);
     FillRect(hdc, &clientRect, backgroundBrush);
 
-    // Draw player
     RECT playerRect = { playerX, playerY, playerX + PLAYER_SIZE, playerY + PLAYER_SIZE };
     FillRect(hdc, &playerRect, playerBrush);
 
-    // Draw obstacles
     for (int i = 0; i < MAX_OBSTACLES; i++) {
         if (obstacles[i] != -1) {
-            RECT obstacleRect = { obstacles[i], WINDOW_HEIGHT - OBSTACLE_HEIGHT, obstacles[i] + OBSTACLE_WIDTH, WINDOW_HEIGHT };
+            RECT obstacleRect = { obstacles[i], WINDOW_HEIGHT - OBSTACLE_HEIGHT - GROUND_HEIGHT, obstacles[i] + OBSTACLE_WIDTH, WINDOW_HEIGHT - GROUND_HEIGHT };
             FillRect(hdc, &obstacleRect, obstacleBrush);
         }
     }
 
-    // Display score
     WCHAR scoreText[50];
     swprintf_s(scoreText, L"Score: %d", score);
     TextOutW(hdc, 10, 10, scoreText, wcslen(scoreText));
 }
-// End the game
+
+// 结束游戏
 void EndGame() {
     gameRunning = FALSE;
     KillTimer(hwnd, TIMER_ID);
 
-    // Convert string literals to wide character format
-    LPCWSTR gameOverText = L"Game Over! Press OK to restart.";
-    LPCWSTR gameOverCaption = L"Game Over";
+    MessageBox(hwnd, L"Game Over! Press OK to restart.", L"Game Over", MB_OK | MB_ICONINFORMATION);
 
-    MessageBox(hwnd, gameOverText, gameOverCaption, MB_OK | MB_ICONINFORMATION);
-
-    // Reset game
     ResetGame();
 }
 
-// Reset game state
+// 重置游戏状态
 void ResetGame() {
     playerX = WINDOW_WIDTH / 4;
     playerY = WINDOW_HEIGHT - PLAYER_SIZE - 50;
     score = 0;
 
-    // Reset obstacles
     for (int i = 0; i < MAX_OBSTACLES; i++) {
         obstacles[i] = -1;
     }
 
-    // Restart game timer
     SetTimer(hwnd, TIMER_ID, 30, NULL);
 
     gameRunning = TRUE;
 }
 
-// Generate a new obstacle
+// 生成新障碍物
 void GenerateObstacle() {
     for (int i = 0; i < MAX_OBSTACLES; i++) {
         if (obstacles[i] == -1) {
-            obstacles[i] = WINDOW_WIDTH;
+            obstacles[i] = WINDOW_WIDTH + rand() % (WINDOW_WIDTH / 2);
             break;
         }
     }
