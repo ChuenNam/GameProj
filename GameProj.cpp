@@ -1,7 +1,6 @@
 ﻿#include "framework.h"
 #include "GameProj.h"
 #include <time.h>
-//#include <Msimg32.h>
 
 #define MAX_LOADSTRING 100
 #define WINDOW_WIDTH 400
@@ -10,8 +9,8 @@
 #define PLAYER_SIZE 40
 #define OBSTACLE_WIDTH 30
 #define MAX_OBSTACLES 1
-#define PLAYER_JUMP_HEIGHT 80
-#define PLAYER_SPEED 10
+#define PLAYER_JUMP_HEIGHT 50
+#define PLAYER_SPEED 8
 #define OBSTACLE_SPEED 5
 
 
@@ -28,6 +27,7 @@ HBRUSH playerBrush, obstacleBrush, backgroundBrush;
 int playerX, playerY;
 int obstacles[MAX_OBSTACLES];
 int score = 0;
+int fallTime = 0;
 BOOL gameRunning = FALSE;
 BOOL playerJumping = FALSE;
 int jumpCounter = 0;
@@ -181,6 +181,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         if (wParam == VK_SPACE && gameRunning && !playerJumping) {
             playerJumping = TRUE;
             jumpCounter = PLAYER_JUMP_HEIGHT / PLAYER_SPEED;
+            fallTime = 0;
         }
         break;
     case WM_ERASEBKGND:
@@ -304,17 +305,20 @@ void UpdateGame() {
     }
 
     if (playerJumping) {
-        playerY -= PLAYER_SPEED;
+		playerY -= (PLAYER_SPEED - (PLAYER_SPEED * fallTime) / (PLAYER_JUMP_HEIGHT / PLAYER_SPEED));
         jumpCounter--;
+
         if (jumpCounter <= 0) {
             playerJumping = FALSE;
+            fallTime = 0;
         }
     }
     else if (playerY < WINDOW_HEIGHT - PLAYER_SIZE) {
-        playerY += PLAYER_SPEED;
+        playerY += 0.05 * fallTime * fallTime;
     }
 
     score++;
+    fallTime++;
 
     if (rand() % 100 < 100) {
         GenerateObstacle();
@@ -362,6 +366,7 @@ void ResetGame() {
     playerX = WINDOW_WIDTH / 4;
     playerY = WINDOW_HEIGHT/2 - PLAYER_SIZE;
     score = 0;
+    fallTime = 0;
 
     for (int i = 0; i < MAX_OBSTACLES; i++) {
         obstacles[i] = -1;
