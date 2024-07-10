@@ -1,25 +1,26 @@
 ﻿#include "framework.h"
 #include "GameProj.h"
 #include <time.h>
+//#include <Msimg32.h>
 
 #define MAX_LOADSTRING 100
-#define WINDOW_WIDTH 800
-#define WINDOW_HEIGHT 600
+#define WINDOW_WIDTH 400
+#define WINDOW_HEIGHT 500
 #define TIMER_ID 1
 #define PLAYER_SIZE 40
 #define OBSTACLE_WIDTH 30
-#define OBSTACLE_HEIGHT 30
-#define MAX_OBSTACLES 5
-#define PLAYER_JUMP_HEIGHT 100
-#define PLAYER_SPEED 5
+#define MAX_OBSTACLES 1
+#define PLAYER_JUMP_HEIGHT 80
+#define PLAYER_SPEED 10
 #define OBSTACLE_SPEED 5
-#define GROUND_HEIGHT 50
 
 
 // 全局变量:
 HINSTANCE hInst;                                // 当前实例
 WCHAR szTitle[MAX_LOADSTRING];                  // 标题栏文本
 WCHAR szWindowClass[MAX_LOADSTRING];            // 主窗口类名
+HBITMAP BirdPicture;
+HBITMAP BackgroundPicture;
 
 // 全局游戏变量
 HWND hwnd;
@@ -30,6 +31,9 @@ int score = 0;
 BOOL gameRunning = FALSE;
 BOOL playerJumping = FALSE;
 int jumpCounter = 0;
+int OBSTACLE_HEIGHT = 100;
+int upper = 300;
+int lower = 80;
 
 // 此代码模块中包含的函数的前向声明:
 ATOM                MyRegisterClass(HINSTANCE hInstance);
@@ -122,7 +126,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
     hInst = hInstance; // 将实例句柄存储在全局变量中
 
     hwnd = CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, 0, WINDOW_WIDTH, WINDOW_HEIGHT, nullptr, nullptr, hInstance, nullptr);
+        CW_USEDEFAULT, 0, WINDOW_WIDTH, WINDOW_HEIGHT + 60, nullptr, nullptr, hInstance, nullptr);
 
     if (!hwnd)
     {
@@ -133,6 +137,10 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
     UpdateWindow(hwnd);
 
     // 初始化游戏
+    BirdPicture = (HBITMAP)LoadImage(NULL, L"IMG/Bird.bmp", IMAGE_BITMAP,
+        0, 0, LR_CREATEDIBSECTION | LR_DEFAULTSIZE | LR_LOADFROMFILE);
+    BackgroundPicture = (HBITMAP)LoadImage(NULL, L"IMG/Background.bmp", IMAGE_BITMAP,
+        0, 0, LR_CREATEDIBSECTION | LR_DEFAULTSIZE | LR_LOADFROMFILE);
     InitializeGame();
 
     return TRUE;
@@ -175,11 +183,22 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             jumpCounter = PLAYER_JUMP_HEIGHT / PLAYER_SPEED;
         }
         break;
+    case WM_ERASEBKGND:
+        break;
     case WM_PAINT:
     {
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hWnd, &ps);
-        DrawGame(hdc);
+        HDC memHDC = CreateCompatibleDC(hdc);
+        RECT rectClient;
+        GetClientRect(hwnd, &rectClient);
+        HBITMAP bmpBuff = CreateCompatibleBitmap(hdc, WINDOW_WIDTH, WINDOW_HEIGHT);
+        HBITMAP pOldBMP = (HBITMAP)SelectObject(memHDC, bmpBuff);
+        DrawGame(memHDC);
+		BOOL tt = BitBlt(hdc, rectClient.left, rectClient.top, WINDOW_WIDTH, WINDOW_HEIGHT, memHDC, rectClient.left, rectClient.top, SRCCOPY);
+        SelectObject(memHDC, pOldBMP);
+        DeleteObject(bmpBuff);
+        DeleteDC(memHDC);
         EndPaint(hWnd, &ps);
     }
     break;
@@ -217,14 +236,29 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
     return (INT_PTR)FALSE;
 }
 
+void DrewImage(HDC hdc, int x, int y, int sideLength, HBITMAP image)
+{
+    HDC hdcMem = CreateCompatibleDC(hdc);
+    HBITMAP bmp = image;
+    HBITMAP hbmOld = (HBITMAP)SelectObject(hdcMem, bmp);
+    BITMAP bm;
+    GetObject(bmp, sizeof(bm), &bm);
+    SetStretchBltMode(hdc, STRETCH_HALFTONE);
+    TransparentBlt(hdc, x, y, sideLength, sideLength, hdcMem, 0, 0, sideLength, sideLength, RGB(0, 0, 0));
+    SelectObject(hdcMem, hbmOld);
+    DeleteObject(hdcMem);
+}
+
+
+
 // 初始化游戏变量和资源
 void InitializeGame() {
     srand((unsigned int)time(NULL));
     playerX = WINDOW_WIDTH / 4;
-    playerY = WINDOW_HEIGHT - PLAYER_SIZE - GROUND_HEIGHT;
+    playerY = WINDOW_HEIGHT/2 - PLAYER_SIZE;
 
-    playerBrush = CreateSolidBrush(RGB(255, 0, 0));
     obstacleBrush = CreateSolidBrush(RGB(0, 0, 255));
+    playerBrush = CreateSolidBrush(RGB(255, 0, 0));
     backgroundBrush = CreateSolidBrush(RGB(255, 255, 255));
 
     for (int i = 0; i < MAX_OBSTACLES; i++) {
@@ -248,13 +282,20 @@ void UpdateGame() {
         if (obstacles[i] != -1) {
             obstacles[i] -= OBSTACLE_SPEED;
             if (obstacles[i] < -OBSTACLE_WIDTH) {
-                obstacles[i] = WINDOW_WIDTH;
+                int tmp = OBSTACLE_HEIGHT;
+                do
+                {
+                    OBSTACLE_HEIGHT = lower + rand() % (upper - lower + 1);
+                } while (abs(tmp - OBSTACLE_HEIGHT) < 30);
+
+                obstacles[i] = WINDOW_WIDTH + rand() % (WINDOW_WIDTH / 2);
             }
 
             if (playerX < obstacles[i] + OBSTACLE_WIDTH &&
                 playerX + PLAYER_SIZE > obstacles[i] &&
-                playerY + PLAYER_SIZE > WINDOW_HEIGHT - OBSTACLE_HEIGHT - GROUND_HEIGHT &&
-                playerY < WINDOW_HEIGHT - GROUND_HEIGHT) {
+                playerY + PLAYER_SIZE > WINDOW_HEIGHT - OBSTACLE_HEIGHT ||
+                (playerY <= 0) || (playerY + PLAYER_SIZE >= WINDOW_HEIGHT)
+                ) {
                 EndGame();
                 return;
             }
@@ -269,13 +310,13 @@ void UpdateGame() {
             playerJumping = FALSE;
         }
     }
-    else if (playerY < WINDOW_HEIGHT - PLAYER_SIZE - GROUND_HEIGHT) {
+    else if (playerY < WINDOW_HEIGHT - PLAYER_SIZE) {
         playerY += PLAYER_SPEED;
     }
 
     score++;
 
-    if (rand() % 100 < 5) {
+    if (rand() % 100 < 100) {
         GenerateObstacle();
     }
 
@@ -284,22 +325,25 @@ void UpdateGame() {
 
 // 绘制游戏
 void DrawGame(HDC hdc) {
-    RECT clientRect;
-    GetClientRect(hwnd, &clientRect);
-    FillRect(hdc, &clientRect, backgroundBrush);
+    //RECT clientRect;
+    //GetClientRect(hwnd, &clientRect);
+    //FillRect(hdc, &clientRect, backgroundBrush);
+    DrewImage(hdc, 0, 0, 521, BackgroundPicture);
 
-    RECT playerRect = { playerX, playerY, playerX + PLAYER_SIZE, playerY + PLAYER_SIZE };
-    FillRect(hdc, &playerRect, playerBrush);
+    //RECT playerRect = { playerX, playerY, playerX + PLAYER_SIZE, playerY + PLAYER_SIZE };
+    //FillRect(hdc, &playerRect, playerBrush);
+    DrewImage(hdc, playerX, playerY, 64, BirdPicture);
+
 
     for (int i = 0; i < MAX_OBSTACLES; i++) {
         if (obstacles[i] != -1) {
-            RECT obstacleRect = { obstacles[i], WINDOW_HEIGHT - OBSTACLE_HEIGHT - GROUND_HEIGHT, obstacles[i] + OBSTACLE_WIDTH, WINDOW_HEIGHT - GROUND_HEIGHT };
+            RECT obstacleRect = { obstacles[i], WINDOW_HEIGHT - OBSTACLE_HEIGHT, obstacles[i] + OBSTACLE_WIDTH, WINDOW_HEIGHT};
             FillRect(hdc, &obstacleRect, obstacleBrush);
         }
     }
 
     WCHAR scoreText[50];
-    swprintf_s(scoreText, L"Score: %d", score);
+    swprintf_s(scoreText, L"Time: %d s", score/30);
     TextOutW(hdc, 10, 10, scoreText, wcslen(scoreText));
 }
 
@@ -308,7 +352,7 @@ void EndGame() {
     gameRunning = FALSE;
     KillTimer(hwnd, TIMER_ID);
 
-    MessageBox(hwnd, L"Game Over! Press OK to restart.", L"Game Over", MB_OK | MB_ICONINFORMATION);
+    MessageBox(hwnd, L"   游戏结束!\n点击重新开始", L"Game Over", MB_OK | MB_ICONINFORMATION);
 
     ResetGame();
 }
@@ -316,7 +360,7 @@ void EndGame() {
 // 重置游戏状态
 void ResetGame() {
     playerX = WINDOW_WIDTH / 4;
-    playerY = WINDOW_HEIGHT - PLAYER_SIZE - 50;
+    playerY = WINDOW_HEIGHT/2 - PLAYER_SIZE;
     score = 0;
 
     for (int i = 0; i < MAX_OBSTACLES; i++) {
@@ -328,7 +372,7 @@ void ResetGame() {
     gameRunning = TRUE;
 }
 
-// 生成新障碍物
+ //生成新障碍物
 void GenerateObstacle() {
     for (int i = 0; i < MAX_OBSTACLES; i++) {
         if (obstacles[i] == -1) {
