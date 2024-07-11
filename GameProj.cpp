@@ -11,8 +11,6 @@
 #define MAX_OBSTACLES 1
 #define PLAYER_JUMP_HEIGHT 50
 #define PLAYER_SPEED 8
-#define OBSTACLE_SPEED 5
-
 
 // 全局变量:
 HINSTANCE hInst;                                // 当前实例
@@ -34,6 +32,9 @@ int jumpCounter = 0;
 int OBSTACLE_HEIGHT = 100;
 int upper = 300;
 int lower = 80;
+int checkTime = 10;
+int OBSTACLE_SPEED = 5;
+int gap = 125;
 
 // 此代码模块中包含的函数的前向声明:
 ATOM                MyRegisterClass(HINSTANCE hInstance);
@@ -178,12 +179,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     }
     break;
     case WM_KEYDOWN:
-        if (wParam == VK_SPACE && gameRunning && !playerJumping) {
-            playerJumping = TRUE;
-            jumpCounter = PLAYER_JUMP_HEIGHT / PLAYER_SPEED;
-            fallTime = 0;
-        }
-        break;
+		if (wParam == VK_SPACE && gameRunning && !playerJumping) {
+			playerJumping = TRUE;
+			jumpCounter = PLAYER_JUMP_HEIGHT / PLAYER_SPEED;
+			fallTime = 0;
+		}
+		break;
     case WM_ERASEBKGND:
         break;
     case WM_PAINT:
@@ -281,9 +282,15 @@ void InitializeGame() {
 void UpdateGame() {
     for (int i = 0; i < MAX_OBSTACLES; i++) {
         if (obstacles[i] != -1) {
+            if (score/30 > checkTime && score/30 <= 50)
+            {
+                gap -= 5;
+                OBSTACLE_SPEED += 1;
+                checkTime += 10;
+            }
             obstacles[i] -= OBSTACLE_SPEED;
             if (obstacles[i] < -OBSTACLE_WIDTH) {
-                int tmp = OBSTACLE_HEIGHT;
+                int tmp = OBSTACLE_HEIGHT; 
                 do
                 {
                     OBSTACLE_HEIGHT = lower + rand() % (upper - lower + 1);
@@ -294,13 +301,22 @@ void UpdateGame() {
 
             if (playerX < obstacles[i] + OBSTACLE_WIDTH &&
                 playerX + PLAYER_SIZE > obstacles[i] &&
-                playerY + PLAYER_SIZE > WINDOW_HEIGHT - OBSTACLE_HEIGHT ||
-                (playerY <= 0) || (playerY + PLAYER_SIZE >= WINDOW_HEIGHT)
+                playerY + PLAYER_SIZE > WINDOW_HEIGHT - OBSTACLE_HEIGHT                
+                ) {
+                EndGame(); 
+                return;
+            }
+            if (playerX < obstacles[i] + OBSTACLE_WIDTH &&
+                playerX + PLAYER_SIZE > obstacles[i] &&
+                playerY < WINDOW_HEIGHT - OBSTACLE_HEIGHT - gap - 20
                 ) {
                 EndGame();
                 return;
             }
-
+			if ((playerY <= 0) || (playerY + PLAYER_SIZE >= WINDOW_HEIGHT)) {
+				EndGame();
+				return;
+			}
         }
     }
 
@@ -329,20 +345,15 @@ void UpdateGame() {
 
 // 绘制游戏
 void DrawGame(HDC hdc) {
-    //RECT clientRect;
-    //GetClientRect(hwnd, &clientRect);
-    //FillRect(hdc, &clientRect, backgroundBrush);
     DrewImage(hdc, 0, 0, 521, BackgroundPicture);
-
-    //RECT playerRect = { playerX, playerY, playerX + PLAYER_SIZE, playerY + PLAYER_SIZE };
-    //FillRect(hdc, &playerRect, playerBrush);
     DrewImage(hdc, playerX, playerY, 64, BirdPicture);
-
 
     for (int i = 0; i < MAX_OBSTACLES; i++) {
         if (obstacles[i] != -1) {
-            RECT obstacleRect = { obstacles[i], WINDOW_HEIGHT - OBSTACLE_HEIGHT, obstacles[i] + OBSTACLE_WIDTH, WINDOW_HEIGHT};
-            FillRect(hdc, &obstacleRect, obstacleBrush);
+            RECT obstacleRectBottom = { obstacles[i], WINDOW_HEIGHT - OBSTACLE_HEIGHT, obstacles[i] + OBSTACLE_WIDTH, WINDOW_HEIGHT};
+            RECT obstacleRectTop = { obstacles[i], 0, obstacles[i] + OBSTACLE_WIDTH, WINDOW_HEIGHT - OBSTACLE_HEIGHT - gap};
+            FillRect(hdc, &obstacleRectBottom, obstacleBrush);
+            FillRect(hdc, &obstacleRectTop, obstacleBrush);
         }
     }
 
@@ -367,6 +378,8 @@ void ResetGame() {
     playerY = WINDOW_HEIGHT/2 - PLAYER_SIZE;
     score = 0;
     fallTime = 0;
+    OBSTACLE_SPEED = 5;
+    gap = 125;
 
     for (int i = 0; i < MAX_OBSTACLES; i++) {
         obstacles[i] = -1;
