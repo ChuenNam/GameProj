@@ -1,6 +1,9 @@
 ﻿#include "framework.h"
 #include "GameProj.h"
 #include <time.h>
+#include <mmsystem.h>
+#pragma comment(lib,"winmm.lib")
+
 
 #define MAX_LOADSTRING 100
 #define WINDOW_WIDTH 400
@@ -18,16 +21,20 @@ WCHAR szTitle[MAX_LOADSTRING];                  // 标题栏文本
 WCHAR szWindowClass[MAX_LOADSTRING];            // 主窗口类名
 HBITMAP BirdPicture;
 HBITMAP BackgroundPicture;
+HBITMAP itemPicture;
 
 // 全局游戏变量
 HWND hwnd;
-HBRUSH playerBrush, obstacleBrush, backgroundBrush;
+HBRUSH itemBrush, obstacleBrush;
 int playerX, playerY;
 int obstacles[MAX_OBSTACLES];
-int score = 0;
+int times = 0;
 int fallTime = 0;
 BOOL gameRunning = FALSE;
 BOOL playerJumping = FALSE;
+BOOL addScore = FALSE;
+BOOL isSave = FALSE;
+BOOL isHurt = FALSE;
 int jumpCounter = 0;
 int OBSTACLE_HEIGHT = 100;
 int upper = 300;
@@ -35,6 +42,7 @@ int lower = 80;
 int checkTime = 10;
 int OBSTACLE_SPEED = 5;
 int gap = 125;
+int score = 0;
 
 // 此代码模块中包含的函数的前向声明:
 ATOM                MyRegisterClass(HINSTANCE hInstance);
@@ -142,6 +150,11 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
         0, 0, LR_CREATEDIBSECTION | LR_DEFAULTSIZE | LR_LOADFROMFILE);
     BackgroundPicture = (HBITMAP)LoadImage(NULL, L"IMG/Background.bmp", IMAGE_BITMAP,
         0, 0, LR_CREATEDIBSECTION | LR_DEFAULTSIZE | LR_LOADFROMFILE);
+    itemPicture = (HBITMAP)LoadImage(NULL, L"IMG/item.bmp", IMAGE_BITMAP,
+        0, 0, LR_CREATEDIBSECTION | LR_DEFAULTSIZE | LR_LOADFROMFILE);
+
+    //mciSendString(L"open Music.mp3 alias p", NULL, 0, NULL);
+    //mciSendString(L"play p repeat", NULL, 0, NULL);
     InitializeGame();
 
     return TRUE;
@@ -161,6 +174,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message)
     {
+	case WM_CREATE:
+		mciSendString(L"open Music.mp3 alias p", NULL, 0, NULL);
+		mciSendString(L"play p repeat", NULL, 0, NULL);
+		break;
     case WM_COMMAND:
     {
         int wmId = LOWORD(wParam);
@@ -260,8 +277,7 @@ void InitializeGame() {
     playerY = WINDOW_HEIGHT/2 - PLAYER_SIZE;
 
     obstacleBrush = CreateSolidBrush(RGB(0, 0, 255));
-    playerBrush = CreateSolidBrush(RGB(255, 0, 0));
-    backgroundBrush = CreateSolidBrush(RGB(255, 255, 255));
+    itemBrush = CreateSolidBrush(RGB(255, 0, 0));
 
     for (int i = 0; i < MAX_OBSTACLES; i++) {
         obstacles[i] = -1;
@@ -282,7 +298,7 @@ void InitializeGame() {
 void UpdateGame() {
     for (int i = 0; i < MAX_OBSTACLES; i++) {
         if (obstacles[i] != -1) {
-            if (score/30 > checkTime && score/30 <= 50)
+            if (times/30 > checkTime && times/30 <= 50)
             {
                 gap -= 5;
                 OBSTACLE_SPEED += 1;
@@ -301,8 +317,13 @@ void UpdateGame() {
 
             if (playerX < obstacles[i] + OBSTACLE_WIDTH &&
                 playerX + PLAYER_SIZE > obstacles[i] &&
-                playerY + PLAYER_SIZE > WINDOW_HEIGHT - OBSTACLE_HEIGHT                
+                playerY + PLAYER_SIZE > WINDOW_HEIGHT - OBSTACLE_HEIGHT 
                 ) {
+                if (isSave)
+                {
+                    isHurt = TRUE;
+                    return;
+                }
                 EndGame(); 
                 return;
             }
@@ -310,6 +331,11 @@ void UpdateGame() {
                 playerX + PLAYER_SIZE > obstacles[i] &&
                 playerY < WINDOW_HEIGHT - OBSTACLE_HEIGHT - gap - 20
                 ) {
+                if (isSave)
+                {
+                    isHurt = TRUE;
+                    return;
+                }
                 EndGame();
                 return;
             }
@@ -333,8 +359,19 @@ void UpdateGame() {
         playerY += 0.05 * fallTime * fallTime;
     }
 
-    score++;
+    times++;
     fallTime++;
+
+    if (playerX > obstacles[0] && !addScore)
+    {
+        score++;
+        addScore = true;
+        if (isHurt/* && obstacles[0] > playerX*/)
+        {
+            isSave = FALSE;
+            isHurt = FALSE;
+        }
+    }
 
     if (rand() % 100 < 100) {
         GenerateObstacle();
@@ -354,12 +391,28 @@ void DrawGame(HDC hdc) {
             RECT obstacleRectTop = { obstacles[i], 0, obstacles[i] + OBSTACLE_WIDTH, WINDOW_HEIGHT - OBSTACLE_HEIGHT - gap};
             FillRect(hdc, &obstacleRectBottom, obstacleBrush);
             FillRect(hdc, &obstacleRectTop, obstacleBrush);
+            if (obstacles[i] > playerX)
+            {
+                addScore = FALSE;
+            }
+            if (obstacles[i] > playerX && score%8 == 0 && score!=0)
+            {
+                DrewImage(hdc, obstacles[i], WINDOW_HEIGHT - OBSTACLE_HEIGHT - gap / 2, 25, itemPicture);
+				if (playerY < WINDOW_HEIGHT - OBSTACLE_HEIGHT && playerY > WINDOW_HEIGHT - OBSTACLE_HEIGHT - gap)
+				{
+					isSave = TRUE;
+				}
+            }
         }
     }
 
+    WCHAR timeText[50];
+    swprintf_s(timeText, L"Time: %d s", times/30);
+    TextOutW(hdc, 10, 10, timeText, wcslen(timeText));
+
     WCHAR scoreText[50];
-    swprintf_s(scoreText, L"Time: %d s", score/30);
-    TextOutW(hdc, 10, 10, scoreText, wcslen(scoreText));
+    swprintf_s(scoreText, L"Score: %d", score);
+    TextOutW(hdc, 10, 30, scoreText, wcslen(scoreText));
 }
 
 // 结束游戏
@@ -376,10 +429,14 @@ void EndGame() {
 void ResetGame() {
     playerX = WINDOW_WIDTH / 4;
     playerY = WINDOW_HEIGHT/2 - PLAYER_SIZE;
-    score = 0;
+    times = 0;
     fallTime = 0;
     OBSTACLE_SPEED = 5;
     gap = 125;
+    score = 0;
+    addScore = TRUE;
+    isSave = FALSE;
+    isHurt = FALSE;
 
     for (int i = 0; i < MAX_OBSTACLES; i++) {
         obstacles[i] = -1;
