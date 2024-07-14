@@ -16,9 +16,9 @@
 #define PLAYER_SPEED 8
 
 // 全局变量:
-HINSTANCE hInst;                                // 当前实例
-WCHAR szTitle[MAX_LOADSTRING];                  // 标题栏文本
-WCHAR szWindowClass[MAX_LOADSTRING];            // 主窗口类名
+HINSTANCE hInst;        
+WCHAR szTitle[MAX_LOADSTRING]; 
+WCHAR szWindowClass[MAX_LOADSTRING];
 HBITMAP BirdPicture;
 HBITMAP BackgroundPicture;
 HBITMAP itemPicture;
@@ -152,9 +152,6 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
         0, 0, LR_CREATEDIBSECTION | LR_DEFAULTSIZE | LR_LOADFROMFILE);
     itemPicture = (HBITMAP)LoadImage(NULL, L"IMG/item.bmp", IMAGE_BITMAP,
         0, 0, LR_CREATEDIBSECTION | LR_DEFAULTSIZE | LR_LOADFROMFILE);
-
-    //mciSendString(L"open Music.mp3 alias p", NULL, 0, NULL);
-    //mciSendString(L"play p repeat", NULL, 0, NULL);
     InitializeGame();
 
     return TRUE;
@@ -366,7 +363,7 @@ void UpdateGame() {
     {
         score++;
         addScore = true;
-        if (isHurt/* && obstacles[0] > playerX*/)
+        if (isHurt)
         {
             isSave = FALSE;
             isHurt = FALSE;
